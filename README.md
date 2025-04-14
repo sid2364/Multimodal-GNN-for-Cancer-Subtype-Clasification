@@ -13,4 +13,4 @@ python cancer_test.py --model gat --num_gene 100 --cancer_subtype True --omic_mo
 ```
 
 ## Demo Data
-Due the bandwidth limit of Git LFS, we made a mirro host of the demo data on [OneDrive](https://uconn-my.sharepoint.com/:f:/g/personal/bingjun_li_uconn_edu/Euizuh7l_m5DmCq9FX8Vum8BNKBG6k6dpF-RumBfNJrzOA?e=64PG9S).
+Due the bandwidth limit of Git LFS, we made a mirror host of the demo data on [OneDrive](https://uconn-my.sharepoint.com/:f:/g/personal/bingjun_li_uconn_edu/Euizuh7l_m5DmCq9FX8Vum8BNKBG6k6dpF-RumBfNJrzOA?e=64PG9S).
