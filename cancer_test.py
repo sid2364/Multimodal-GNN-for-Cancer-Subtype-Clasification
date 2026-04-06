@@ -1,4 +1,4 @@
-    ## import all necessary libaraies
+## import all necessary libaraies
 import os
 import time
 
@@ -7,6 +7,9 @@ import pandas as pd
 import scipy.sparse as sp
 import argparse
 import sklearn.metrics
+from sklearn.utils.class_weight import compute_class_weight
+from sklearn.preprocessing import label_binarize
+from sklearn.metrics import average_precision_score
 
 import torch
 torch.manual_seed(2022)
@@ -83,22 +86,25 @@ print(args)
 
 path = 'data/cancer/'
 
-expression_variance_path = path + 'expression_variance.tsv'
-non_null_index_path = path + 'biogrid_non_null.csv'
+# python cancer_test.py --model gat --num_gene 100 --cancer_subtype True --omic_mode 4 --shuffle_index 0 --gene_gene True --mirna_gene True --mirna_mirna True --parallel True --l2 True --decoder False --poolsize 8 --edge_weight True --epochs 200 --train_ratio 0.7 --test_ratio 0.1
+
+expression_variance_path = path + 'expression_variance.tsv' # present
+non_null_index_path = path + 'biogrid_non_null.csv' # present
 if args.cancer_subtype:
     if args.specific_type.lower() == 'brca':
-        shuffle_index_path = path + 'brca_shuffle_index.tsv'
-        cancer_subtype_label_path = path + 'brca_subtype.csv'
-        expression_data_path = path + 'expression_data_brca.tsv'
-        cnv_data_path = path + 'cnv_data_brca.tsv'
-        mirna_data_path = path +'mirna_data_brca.tsv'
+        shuffle_index_path = path + 'brca_shuffle_index.tsv' # present
+        cancer_subtype_label_path = path + 'brca_subtype.csv' # present
+        expression_data_path = path + 'expression_data_brca.tsv' # present
+        cnv_data_path = path + 'cnv_data_brca.tsv' # present
+        mirna_data_path = path +'mirna_data_brca.tsv' # present
 else:
-    expression_data_path = path + 'standardized_expression_data_with_labels.tsv'
-    cnv_data_path = path + 'standardized_cnv_data_with_labels.tsv'
-    mirna_data_path = path +'top_100_mirna_data.tsv'
-    shuffle_index_path = path + 'common_trimmed_shuffle_index_'+ str(args.shuffle_index) + '.tsv'
-adjacency_matrix_path = path + 'adj_matrix_biogrid.npz'
-mirna_to_gene_matrix_path = path + 'standardized_mirna_mrna_edge_filtered_at_eight_with_top_100_mirna.npz'
+    raise Exception("don't have the data (yet)")
+    # expression_data_path = path + 'standardized_expression_data_with_labels.tsv' # NOT PRESENT
+    # cnv_data_path = path + 'standardized_cnv_data_with_labels.tsv' # NOT PRESENT
+    # mirna_data_path = path +'top_100_mirna_data.tsv' # NOT PRESENT
+    # shuffle_index_path = path + 'common_trimmed_shuffle_index_'+ str(args.shuffle_index) + '.tsv' # NOT PRESENT
+adjacency_matrix_path = path + 'adj_matrix_biogrid.npz' # present
+mirna_to_gene_matrix_path = path + 'standardized_mirna_mrna_edge_filtered_at_eight_with_top_100_mirna.npz' # present
 
 ## use the loading function to load the data
 if args.omic_mode < 3:
@@ -179,6 +185,22 @@ train_labels = labels[np.array(shuffle_index[0:train_size])]
 val_labels = labels[shuffle_index[train_size:val_size]]
 test_labels = labels[shuffle_index[val_size:]]
 
+##########################################################################
+# compute inverse-frequency class weights from training labels only (so we have no leakage)
+# so if there are 500 samples of class 1, and 50 samples of class 2, then class 1 gets weight 0.1 and class 2 gets weight 1.0
+# so the model will be penalized 10 times more for misclassifying class 2 samples than class 1 samples, this should help with our imbalanced dataset
+# https://scikit-learn.org/stable/modules/generated/sklearn.utils.class_weight.compute_class_weight.html
+unique_classes = np.unique(train_labels)
+class_weights_b = compute_class_weight('balanced', classes=unique_classes, y=train_labels)
+# class_weights_b = compute_class_weight(None, classes=unique_classes, y=train_labels)
+
+# fill zeros for any classes absent in train (shouldn't happen but be safe)
+class_weights_np = np.zeros(len(np.unique(labels)))
+class_weights_np[unique_classes] = class_weights_b
+
+USE_CLASS_WEIGHTS = True # False = default behvaiour, True = added to see if weight helps or not
+##########################################################################
+
 # ## dropout some training samples
 # train_data, train_labels = dropout_data(train_data, train_labels, 0.75)
 
@@ -196,6 +218,7 @@ val_data = torch.FloatTensor(val_data)
 train_labels = torch.LongTensor(train_labels)
 test_labels = torch.LongTensor(test_labels)
 val_labels = torch.LongTensor(val_labels)
+class_weights = torch.FloatTensor(class_weights_np)
 
 dset_train = TensorDataset(train_data, train_labels)
 train_loader = DataLoader(dset_train, batch_size = args.batch_size, shuffle = True)
@@ -341,9 +364,15 @@ for epoch in range(args.epochs):
 
         ## use different loss function with or without encoder
         if args.decoder:
-            loss_batch = model.loss(x_reconstruct, batch_x, out, batch_y, l2_regularization)
+            if USE_CLASS_WEIGHTS:
+                loss_batch = model.loss(x_reconstruct, batch_x, out, batch_y, l2_regularization, class_weights.to(device))
+            else:
+                loss_batch = model.loss(x_reconstruct, batch_x, out, batch_y, l2_regularization)
         else:
-            loss_batch = model.loss(batch_x.view(batch_x.size()[0], -1), batch_x, out, batch_y, l2_regularization)
+            if USE_CLASS_WEIGHTS:
+                loss_batch = model.loss(batch_x.view(batch_x.size()[0], -1), batch_x, out, batch_y, l2_regularization, class_weights.to(device))
+            else:
+                loss_batch = model.loss(batch_x.view(batch_x.size()[0], -1), batch_x, out, batch_y, l2_regularization)
         accuracy_batch = accuracy(out, batch_y)
         loss_batch.backward()
         optimizer.step()
@@ -419,9 +448,20 @@ def test(loader, num_classes):
         correct += int((pred == batch_y).sum())  # Check against ground-truth labels.
         test_accuracy += accuracy(out, batch_y)
     
-    ## print the final classification report 
-    classification_report = sklearn.metrics.classification_report(test_labels, np.argmax(np.asarray(predictions), 1), labels=range(num_classes))
+    ## print the final classification report
+    y_true = test_labels.numpy()
+    y_pred = np.argmax(np.asarray(predictions), 1)
+    y_score = np.asarray(predictions)
+
+    classification_report = sklearn.metrics.classification_report(y_true, y_pred, labels=range(num_classes))
     print(classification_report)
+
+    # for AUPRC: binarize labels and compute
+    # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.average_precision_score.html
+    y_true_bin = label_binarize(y_true, classes=range(num_classes))
+    auprc = average_precision_score(y_true_bin, y_score, average='macro')
+    print(f'AUPRC: {auprc:.4f}')
+
     return correct / len(loader.dataset), test_accuracy/len(loader.dataset)  # Derive ratio of correct predictions.
 
 print(test(test_loader,nclass))

@@ -231,7 +231,7 @@ class GAT(torch.nn.Module):
         else:
             return F.log_softmax(x, dim=1)
     
-    def loss(self, x_reconstruct, x_target, y, y_target, l2_regularization):
+    def loss(self, x_reconstruct, x_target, y, y_target, l2_regularization, class_weights=None):
         if self.decoder:
             if self.num_mirna == 0 or self.num_features == 1:
                 x_target = x_target.view(x_target.size()[0], -1)
@@ -248,10 +248,10 @@ class GAT(torch.nn.Module):
                 loss1 = nn.MSELoss()(x_reconstruct, x_target_flatten)
         else:
             loss1 = 0
-        
-        loss2 = nn.CrossEntropyLoss()(y, y_target)
+
+        loss2 = nn.CrossEntropyLoss(weight=class_weights)(y, y_target)
         loss = 1*loss1 + 1*loss2
-        
+
         if self.l2:
             l2_loss = 0.0
             for param in self.parameters():
@@ -453,7 +453,7 @@ class GCN(torch.nn.Module):
         else:
             return F.log_softmax(x, dim=1)
     
-    def loss(self, x_reconstruct, x_target, y, y_target, l2_regularization):
+    def loss(self, x_reconstruct, x_target, y, y_target, l2_regularization, class_weights=None):
         if self.decoder:
             if self.num_mirna == 0 or self.num_features == 1:
                 x_target = x_target.view(x_target.size()[0], -1)
@@ -470,10 +470,12 @@ class GCN(torch.nn.Module):
                 loss1 = nn.MSELoss()(x_reconstruct, x_target_flatten)
         else:
             loss1 = 0
-        
-        loss2 = nn.CrossEntropyLoss()(y, y_target)
+
+        # https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html
+        # weight should be a 1D Tensor assigning weight to each of the classes
+        loss2 = nn.CrossEntropyLoss(weight=class_weights)(y, y_target)
         loss = 1*loss1 + 1*loss2
-        
+
         if self.l2:
             l2_loss = 0.0
             for param in self.parameters():
@@ -592,8 +594,8 @@ class Baseline(torch.nn.Module):
         x_parallel = self.classifier(x_parallel)
         return F.log_softmax(x_parallel, dim=1)
     
-    def loss(self, x_reconstruct, x_target, y, y_target, l2_regularization):
-        loss2 = nn.CrossEntropyLoss()(y, y_target)
+    def loss(self, x_reconstruct, x_target, y, y_target, l2_regularization, class_weights=None):
+        loss2 = nn.CrossEntropyLoss(weight=class_weights)(y, y_target)
         loss = 1*loss2
-        
+
         return loss
