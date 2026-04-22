@@ -164,6 +164,10 @@ adj = adj.astype('float32')
 adj.setdiag(0)
 adj = adj + sp.eye(adj.shape[0])
 
+###############################################################################################
+# small ablation test, make adj fully identity matrix TODO put a command line option for this
+# adj = sp.eye(adj.shape[0])
+
 adj = sp.coo_matrix(adj)
 edge_index = torch.stack([torch.tensor(adj.row), torch.tensor(adj.col)], dim=0)
 edge_weight = torch.Tensor(adj.data)
