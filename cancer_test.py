@@ -264,7 +264,7 @@ else:
                 nclass, 
                 args.dropout).to(device)
 if args.model == 'baseline':
-    model = Baseline(args.model, 
+    model = Baseline2(args.model, 
                 args.parallel, 
                 args.l2, args.decoder, 
                 args.poolsize, 

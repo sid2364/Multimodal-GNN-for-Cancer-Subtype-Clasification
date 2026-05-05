@@ -244,6 +244,23 @@ weighted avg       0.66      0.70      0.68        99
 
 AUPRC: 0.7134
 
+----
+
+BASELINE2:
+              precision    recall  f1-score   support
+
+           0       0.94      1.00      0.97        16
+           1       1.00      0.73      0.84        11
+           2       0.75      0.98      0.85        54
+           3       0.33      0.06      0.10        18
+
+    accuracy                           0.79        99
+   macro avg       0.76      0.69      0.69        99
+weighted avg       0.73      0.79      0.73        99
+
+AUPRC: 0.7117
+
+
 # Plans
 
 ## Todo
@@ -267,3 +284,12 @@ AUPRC: 0.7134
 - Improve CF
 - Improve results 
 
+## Questions to ask:
+1. Isolated graph a problem?
+2. Tuning hyperparams
+3. Cross validation strategy data-leaky?
+4. Missing data
+
+
+Things to do for the report:
+1. add everything we've done, emailing the authors, etc.

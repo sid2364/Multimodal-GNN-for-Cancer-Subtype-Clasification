@@ -486,7 +486,7 @@ class GCN(torch.nn.Module):
         return loss
 
 
-class Baseline(torch.nn.Module):
+class Baseline(torch.nn.Module): # TODO tweak hyperparams, coz this doesn't run for me, my GPU memory explodes (WHY?) or run on GPU cluster
     def __init__(self, 
                     method, 
                     parallel, 
@@ -520,20 +520,22 @@ class Baseline(torch.nn.Module):
         self.raised_dimension = 8
         self.concate_layer = 64
 
-        if self.omic_mode < 3:
+        if self.omic_mode < 3: # no CNV, so just gene expression or just mirna
             self.num_features = 1
-        else:
+        else: # we have CNV, so can use CNV + gene expression
             self.num_features = 2
 
+        # https://docs.pytorch.org/docs/stable/generated/torch.nn.Linear.html
+        # torch.nn.Linear(in_features, out_features, bias=True, device=None, dtype=None)
         self.pre_conv_linear_gene = nn.Linear(self.num_features, self.raised_dimension)
-        self.pre_conv_linear_mirna = nn.Linear(1, self.raised_dimension)
+        self.pre_conv_linear_mirna = nn.Linear(1, self.raised_dimension) #
 
-        parallel_input = self.raised_dimension*(self.num_gene + self.num_mirna)
+        parallel_input = self.raised_dimension*(self.num_gene + self.num_mirna) # 8 * (100 * 100) = 8000 (?!)
 
-        self.parallel_linear1 = nn.Linear(parallel_input, parallel_input//2)
-        self.parallel_linear2 = nn.Linear(parallel_input//2, parallel_input//4)
-        self.parallel_linear3 = nn.Linear(parallel_input//4, self.concate_layer)
-        self.classifier = nn.Linear(self.concate_layer, num_classes)
+        self.parallel_linear1 = nn.Linear(parallel_input, parallel_input//2) # 8000, 4000
+        self.parallel_linear2 = nn.Linear(parallel_input//2, parallel_input//4) # 4000, 2000
+        self.parallel_linear3 = nn.Linear(parallel_input//4, self.concate_layer) # 2000, 64
+        self.classifier = nn.Linear(self.concate_layer, num_classes) # 64, 4
     
     ## create the batch index for each nodes in the batch
     def create_batch_index(self, batches):
@@ -583,19 +585,127 @@ class Baseline(torch.nn.Module):
         x_parallel = x
         x_parallel = x_parallel.view(batches,-1)
         
-        x_parallel = self.parallel_linear1(x_parallel)
+        x_parallel = self.parallel_linear1(x_parallel) # 8000, 4000
         x_parallel = F.relu(x_parallel)
-        x_parallel = self.parallel_linear2(x_parallel)
+        x_parallel = self.parallel_linear2(x_parallel) # 4000, 2000
         x_parallel = F.relu(x_parallel)
-        x_parallel = self.parallel_linear3(x_parallel)
+        x_parallel = self.parallel_linear3(x_parallel) # 2000, 64
         x_parallel = F.relu(x_parallel)
 
         x_parallel = F.dropout(x_parallel, p=self.dropout_rate, training=self.training)
-        x_parallel = self.classifier(x_parallel)
+        x_parallel = self.classifier(x_parallel) # 64, 4
         return F.log_softmax(x_parallel, dim=1)
     
     def loss(self, x_reconstruct, x_target, y, y_target, l2_regularization, class_weights=None):
         loss2 = nn.CrossEntropyLoss(weight=class_weights)(y, y_target)
         loss = 1*loss2
 
+        return loss
+    
+
+class Baseline2(torch.nn.Module):
+    # skip the dimension-raise step
+    def __init__(self,
+                    method,
+                    parallel,
+                    l2,
+                    decoder,
+                    poolsize,
+                    poolrate,
+                    edge_weights,
+                    edge_attributes,
+                    num_gene,
+                    num_mirna,
+                    omic_mode,
+                    num_classes,
+                    dropout_rate,
+                    hidden_dim=512):
+
+        super(Baseline2, self).__init__()
+        self.omic_mode = omic_mode
+        self.method = method
+        self.parallel = parallel
+        self.decoder = decoder
+        self.l2 = l2
+        self.poolsize = poolsize
+        self.poolrate = poolrate
+        self.edge_weights = edge_weights
+        self.edge_attributes = edge_attributes
+        self.hid = 6
+        self.num_gene = num_gene
+        self.num_mirna = num_mirna
+        self.num_classes = num_classes
+        self.dropout_rate = dropout_rate
+        self.raised_dimension = 8
+        self.concate_layer = 64
+
+        if self.omic_mode < 3: # no CNV
+            self.num_features = 1
+        else: # we have CNV, so can use CNV + gene expression
+            self.num_features = 2
+
+        # self.pre_conv_linear_gene = nn.Linear(self.num_features, self.raised_dimension)
+        # self.pre_conv_linear_mirna = nn.Linear(1, self.raised_dimension)
+
+        # parallel_input = self.raised_dimension*(self.num_gene + self.num_mirna)
+
+        # self.parallel_linear1 = nn.Linear(parallel_input, parallel_input//2)
+        # self.parallel_linear2 = nn.Linear(parallel_input//2, parallel_input//4)
+        # self.parallel_linear3 = nn.Linear(parallel_input//4, self.concate_layer)
+        # self.classifier = nn.Linear(self.concate_layer, num_classes)
+
+        if self.num_mirna == 0: # no mirna, just gene features
+            flat_input = self.num_gene * self.num_features # 100 * 2 = 200
+        elif self.num_features == 1: # no CNV, so
+            flat_input = self.num_gene + self.num_mirna # 100 + 100 = 200
+        else: # have both gene features and mirna, so need to flatten and concat [gene exp, cnv, mirna]
+            flat_input = self.num_gene * self.num_features + self.num_mirna # 100 * 2 + 100 = 300
+
+        self.flat_input = flat_input
+
+        # try simpler FC layers
+        self.fc1 = nn.Linear(flat_input, hidden_dim) # 300, 512
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim // 2) # 512, 256
+        self.fc3 = nn.Linear(hidden_dim // 2, 64) # 256, 64
+        self.classifier = nn.Linear(64, num_classes) # 64, 4
+
+    def forward(self, x, edge_index, edge_weight):
+        batches = x.shape[0]
+        num_node = x.shape[1]
+
+        if self.num_mirna == 0 or self.num_features == 1:
+            # no mirna padding to handle, just flatten everything
+            x_flat = x.view(batches, -1)
+        else:
+            # omic_mode 4: separate gene features (mRNA + CNV) from mirna (no CNV padding)
+            # x[:,:,0] holds exp + mirna, x[:,:,1] holds cnv + padding
+            x_exp_mirna = x[:, :, 0]
+            x_cnv = x[:, :, 1]
+
+            # strip the mirna section (last 100 cols) from the cnv channel (it's padding)
+            x_cnv = x_cnv[:, :-self.num_mirna]
+            x_exp = x_exp_mirna[:, :-self.num_mirna]
+            x_mirna = x_exp_mirna[:, -self.num_mirna:]
+
+            # concat flat: [exp, cnv, mirna] per sample
+            x_flat = torch.cat([x_exp, x_cnv, x_mirna], dim=1)
+
+        # connect the layers with ReLU and dropout
+        x = F.relu(self.fc1(x_flat))
+        x = F.relu(self.fc2(x))
+        x = F.relu(self.fc3(x))
+        x = F.dropout(x, p=self.dropout_rate, training=self.training)
+        x = self.classifier(x)
+        return F.log_softmax(x, dim=1)
+
+    def loss(self, x_reconstruct, x_target, y, y_target, l2_regularization, class_weights=None):
+        loss2 = nn.CrossEntropyLoss(weight=class_weights)(y, y_target)
+        loss = 1 * loss2
+
+        if self.l2:
+            l2_loss = 0.0
+            for param in self.parameters():
+                data = param * param
+                l2_loss += data.sum()
+            loss += 0.2 * l2_regularization * l2_loss
         return loss
