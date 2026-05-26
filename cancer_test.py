@@ -62,6 +62,7 @@ parser.add_argument('--edge_attribute', type=str2bool, nargs='?', default = Fals
 parser.add_argument('--edge_weight', type=str2bool, nargs='?', default = False, help='if use score as the edge weight instead of binary edges')
 parser.add_argument('--train_ratio', type=float, default = 0.8, help='the ratio of the training data')
 parser.add_argument('--test_ratio', type=float, default = 0.1, help='the ratio of the test data')
+parser.add_argument('--ablation_test', type=str2bool, nargs='?', default = False, help='make adj identity matrix, no graph structure')
 
 args = parser.parse_args()
 
@@ -166,7 +167,8 @@ adj = adj + sp.eye(adj.shape[0])
 
 ###############################################################################################
 # small ablation test, make adj fully identity matrix TODO put a command line option for this
-# adj = sp.eye(adj.shape[0])
+if args.ablation_test:
+    adj = sp.eye(adj.shape[0])
 
 adj = sp.coo_matrix(adj)
 edge_index = torch.stack([torch.tensor(adj.row), torch.tensor(adj.col)], dim=0)

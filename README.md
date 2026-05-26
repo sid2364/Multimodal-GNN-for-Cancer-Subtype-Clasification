@@ -174,8 +174,47 @@ miRNA data - microRNA expression (microRNAs are small RNA molecules that can reg
 7. train models, eval, etc.
 8. STONKS!
 
+
+# Plans
+
+## Todo
+- Understand the steps
+- Understand every step fo the code (pipline)
+- Rewrite a simple baseline and see how it works (less nodes)
+- Frame the question of our work (do we need GNN)
+- Questions for the meeting
+- (Exploring adjacent litterature)
+
+## Baseline
+- Understand data
+- Illustrate data
+- Issues and why
+- Improvements
+- Test leakage and generalization
+    
+## Extra
+- Embeddings
+- Improve ML pipline
+- Improve CF
+- Improve results 
+
+## Questions to ask:
+1. Isolated graph a problem?
+2. Tuning hyperparams
+3. Cross validation strategy data-leaky?
+4. Missing data
+
+
+Things to do for the report:
+1. add everything we've done, emailing the authors, etc.
+
+
+
+-----
+
 ## Some commands + results
 
+### num_gene = 100 
 Run everything with BRCA dataset, GCN model, and 100 genes.
 ```
 python cancer_test.py --model gcn --num_gene 100 --cancer_subtype True --omic_mode 4 --shuffle_index 0 --gene_gene True --mirna_gene True --mirna_mirna True --parallel True --l2 True --decoder False --poolsize 8 --edge_weight True --epochs 100 --train_ratio 0.7 --test_ratio 0.1
@@ -245,6 +284,9 @@ weighted avg       0.66      0.70      0.68        99
 AUPRC: 0.7134
 
 ----
+Run everything with BRCA dataset, baseline, and 100 genes.
+```python cancer_test.py --model baseline --cancer_subtype True --specific_type brca --omic_mode 4 --num_gene 100 --epochs 100
+```
 
 BASELINE2:
               precision    recall  f1-score   support
@@ -260,36 +302,33 @@ weighted avg       0.73      0.79      0.73        99
 
 AUPRC: 0.7117
 
+### num_gene = 200
+GCN:
 
-# Plans
+              precision    recall  f1-score   support
 
-## Todo
-- Understand the steps
-- Understand every step fo the code (pipline)
-- Rewrite a simple baseline and see how it works (less nodes)
-- Frame the question of our work (do we need GNN)
-- Questions for the meeting
-- (Exploring adjacent litterature)
+           0       0.94      1.00      0.97        16
+           1       0.70      0.64      0.67        11
+           2       0.87      0.63      0.73        54
+           3       0.42      0.78      0.55        18
 
-## Baseline
-- Understand data
-- Illustrate data
-- Issues and why
-- Improvements
-- Test leakage and generalization
-    
-## Extra
-- Embeddings
-- Improve ML pipline
-- Improve CF
-- Improve results 
+    accuracy                           0.72        99
+   macro avg       0.73      0.76      0.73        99
+weighted avg       0.78      0.72      0.73        99
 
-## Questions to ask:
-1. Isolated graph a problem?
-2. Tuning hyperparams
-3. Cross validation strategy data-leaky?
-4. Missing data
+AUPRC: 0.7289
 
+GCN - ablation:
 
-Things to do for the report:
-1. add everything we've done, emailing the authors, etc.
+             precision    recall  f1-score   support
+
+           0       0.00      0.00      0.00        16
+           1       0.00      0.00      0.00        11
+           2       0.55      1.00      0.71        54
+           3       0.00      0.00      0.00        18
+
+    accuracy                           0.55        99
+   macro avg       0.14      0.25      0.18        99
+weighted avg       0.30      0.55      0.39        99
+
+AUPRC: 0.2500
